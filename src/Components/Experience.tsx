@@ -8,7 +8,6 @@ import useMouse from '../Hooks/useMouse'
 
 const Experience = () => {
   const meshRef = useRef<THREE.Mesh>(null!)
-  const ballRef = useRef<THREE.Mesh>(null!)
   const { gl, camera } = useThree()
   const mouse = useMouse()
   const mousePos: THREE.Vector2 = useMemo(() => {
@@ -19,11 +18,16 @@ const Experience = () => {
   }, [])
   const raycaster = new THREE.Raycaster()
 
+  const fbo = useRef<{
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    material: THREE.ShaderMaterial,
+    target1: THREE.WebGLRenderTarget,
+    target2: THREE.WebGLRenderTarget
+  } | null>(null)
 
-
-  const fbo = useMemo(() => {
+  if (fbo.current === null) {
     const target1 = new THREE.WebGLRenderTarget(1024, 1024)
-    console.log(target1.height, target1.width)
     const target2 = target1.clone()
 
     const scene = new THREE.Scene()
@@ -40,34 +44,34 @@ const Experience = () => {
     })
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material)
     scene.add(quad)
-    return { scene, camera, material, target1, target2 }
-  }, [])
+    fbo.current = { scene, camera, material, target1, target2 }
+  }
 
   useFrame(() => {
+    if (!fbo.current) return
+
     if (raycaster) {
       raycaster.setFromCamera(mousePos.set(mouse.current.x, mouse.current.y), camera)
       const intersects = raycaster.intersectObject(meshRef.current)
       if (intersects.length > 0 && intersects[0].uv) {
         intersectionUV.set(intersects[0]?.uv.x, intersects[0]?.uv.y)
-        fbo.material.uniforms.uMousePos.value = intersectionUV
-        // if (ballRef.current) {
-        //   ballRef.current.position.set(intersects[0].point.x, intersects[0].point.y, intersects[0].point.z)
-        // }
+        fbo.current.material.uniforms.uMousePos.value = intersectionUV
       }
     }
 
     if (!meshRef.current) return
-    fbo.material.uniforms.uPrevTexture.value = fbo.target2.texture
-    gl.setRenderTarget(fbo.target1)
-    gl.render(fbo.scene, fbo.camera)
+    fbo.current.material.uniforms.uPrevTexture.value = fbo.current.target2.texture
+    gl.setRenderTarget(fbo.current.target1)
+    gl.render(fbo.current.scene, fbo.current.camera)
 
 
-    const temp = fbo.target1
-    fbo.target1 = fbo.target2
-    fbo.target2 = temp
+    const temp = fbo.current.target1
+    fbo.current.target1 = fbo.current.target2
+    fbo.current.target2 = temp
 
     gl.setRenderTarget(null)
-    meshRef.current.material.map = fbo.target1.texture
+    const material = meshRef.current.material as THREE.MeshBasicMaterial
+    material.map = fbo.current.target1.texture
   })
 
 
@@ -77,10 +81,6 @@ const Experience = () => {
         <planeGeometry args={[10, 10]} />
         <meshBasicMaterial side={THREE.DoubleSide} />
       </mesh>
-      {/* <mesh ref={ballRef}> */}
-      {/*   <sphereGeometry args={[0.2]} /> */}
-      {/*   <meshStandardMaterial color={'#eeeeee'} /> */}
-      {/* </mesh> */}
     </>
   )
 }
